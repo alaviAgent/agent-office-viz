@@ -1,193 +1,258 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agent Office Visualization</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: Arial, sans-serif;
-            background: #1a1a2e;
-            color: #fff;
-            padding: 20px;
-        }
-        .office {
-            display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-        .desk {
-            background: #16213e;
-            border: 2px solid #0f3460;
-            border-radius: 10px;
-            padding: 20px;
-            width: 180px;
-            min-height: 200px;
-            position: relative;
-        }
-        .desk h3 { color: #e94560; margin-bottom: 10px; }
-        .agent-name { font-size: 14px; color: #fff; }
-        .status { margin: 10px 0; }
-        .activity { font-size: 12px; color: #00fff5; }
-        .avatar {
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            margin: 10px 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-        }
-        .controls {
-            text-align: center;
-            margin: 20px 0;
-        }
-        button {
-            background: #e94560;
-            border: none;
-            color: white;
-            padding: 10px 20px;
-            margin: 5px;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        button:hover { background: #ff6b81; }
-        .task-flow {
-            margin-top: 30px;
-            background: #16213e;
-            padding: 20px;
-            border-radius: 10px;
-        }
-        .task-flow h3 { color: #e94560; }
-        .flow-arrow { color: #00fff5; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agent Office Viz</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #141b32;
+      --line: #2b3a67;
+      --text: #e8edff;
+      --muted: #9fb0e8;
+      --accent: #5eead4;
+      --kitchen: #3b2a4c;
+      --room: #1f2a4a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: radial-gradient(circle at 20% 10%, #1a2452, var(--bg));
+      color: var(--text);
+      min-height: 100vh;
+      padding: 16px;
+    }
+    h1 { margin: 0 0 10px; font-size: 24px; }
+    .subtitle { color: var(--muted); margin-bottom: 12px; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(40px, 1fr));
+      gap: 10px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .zone {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: color-mix(in srgb, var(--panel) 90%, black);
+      padding: 10px;
+      min-height: 170px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .zone h3 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+
+    .common-office { grid-column: span 8; min-height: 360px; }
+    .kitchen { grid-column: span 4; background: color-mix(in srgb, var(--kitchen) 70%, #0b1020); }
+    .rooms { grid-column: span 12; display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 10px; }
+
+    .room {
+      background: color-mix(in srgb, var(--room) 80%, #0b1020);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 8px;
+      min-height: 150px;
+    }
+
+    .bed {
+      width: 68px;
+      height: 30px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #7dd3fc, #60a5fa);
+      box-shadow: inset 0 -8px 0 rgba(0,0,0,.12);
+      margin-top: 6px;
+    }
+
+    .agent {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid #41558f;
+      border-radius: 999px;
+      padding: 4px 8px;
+      margin: 4px;
+      background: rgba(255,255,255,.04);
+      font-size: 12px;
+      transition: transform .2s ease, background .2s ease;
+    }
+
+    .agent.active {
+      background: rgba(94, 234, 212, .15);
+      transform: translateY(-1px);
+      border-color: #57d8c3;
+    }
+
+    .relationship {
+      font-size: 12px;
+      color: var(--muted);
+      margin: 3px 0;
+    }
+
+    .statusbar {
+      margin-top: 12px;
+      max-width: 1200px;
+      margin-inline: auto;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: rgba(20,27,50,.7);
+      color: var(--muted);
+    }
+
+    .controls { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+    button {
+      background: #3a4f87;
+      color: #fff;
+      border: 1px solid #5770b8;
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+    button:hover { filter: brightness(1.1); }
+
+    .log {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #b9c7f5;
+      min-height: 18px;
+    }
+
+    @media (max-width: 960px) {
+      .common-office, .kitchen { grid-column: span 12; }
+      .rooms { grid-template-columns: repeat(2, minmax(160px, 1fr)); }
+    }
+  </style>
 </head>
 <body>
-    <h1>🏢 Team Alpha Office</h1>
-    <div class="office">
-        <div class="desk" id="desk-arthur">
-            <div class="avatar" style="background: #667eea;">👤</div>
-            <div class="agent-name">Arthur</div>
-            <div class="status">Orchestrator</div>
-            <div class="activity" id="activity-arthur">Receiving tasks</div>
-        </div>
-        <div class="desk" id="desk-bruce">
-            <div class="avatar" style="background: #764ba2;">🎩</div>
-            <div class="agent-name">CTO</div>
-            <div class="status">Analyzing</div>
-            <div class="activity" id="activity-bruce">Reviewing PRs</div>
-        </div>
-        <div class="desk" id="desk-chen">
-            <div class="avatar" style="background: #f093fb;">📋</div>
-            <div class="agent-name">Chen</div>
-            <div class="status">Planning</div>
-            <div class="activity" id="activity-chen">Organizing</div>
-        </div>
-        <div class="desk" id="desk-tinker">
-            <div class="avatar" style="background: #4facfe;">💻</div>
-            <div class="agent-name">Tinker</div>
-            <div class="status">Coding</div>
-            <div class="activity" id="activity-tinker">Writing code</div>
-        </div>
-        <div class="desk" id="desk-bounty">
-            <div class="avatar" style="background: #43e97b;">🔍</div>
-            <div class="agent-name">Bounty Hunter</div>
-            <div class="status">Testing</div>
-            <div class="activity" id="activity-bounty">Running tests</div>
-        </div>
-        <div class="desk" id="desk-oracle">
-            <div class="avatar" style="background: #fa709a;">🔮</div>
-            <div class="agent-name">Oracle</div>
-            <div class="status">Analyzing</div>
-            <div class="activity" id="activity-oracle">Building models</div>
-        </div>
-        <div class="desk" id="desk-io">
-            <div class="avatar" style="background: #fee140;">⚙️</div>
-            <div class="agent-name">Io</div>
-            <div class="status">Deploying</div>
-            <div class="activity" id="activity-io">Configuring infra</div>
-        </div>
-        <div class="desk" id="desk-juggernaut">
-            <div class="avatar" style="background: #f83600;">🎨</div>
-            <div class="agent-name">Juggernaut</div>
-            <div class="status">Designing</div>
-            <div class="activity" id="activity-juggernaut">Creating mockups</div>
-        </div>
-    </div>
+  <h1>🏢 Agent Office Viz</h1>
+  <div class="subtitle">2D сцена: комнаты агентов, общий офис и кухня с живыми встречами.</div>
 
+  <div class="layout">
+    <section class="zone common-office" id="office">
+      <h3>Общий офис</h3>
+      <div id="officeAgents"></div>
+      <div class="log" id="officeLog"></div>
+    </section>
+
+    <section class="zone kitchen" id="kitchen">
+      <h3>Кухня / обмен опытом</h3>
+      <div id="kitchenAgents"></div>
+      <div class="log" id="kitchenLog">Пока тихо. Кофе греется.</div>
+    </section>
+
+    <section class="rooms" id="rooms"></section>
+  </div>
+
+  <div class="statusbar">
+    <strong>Pipeline:</strong> Arthur → Invoker (CTO) → PM/Designer → Engineers → QA → Invoker review → Arthur report
     <div class="controls">
-        <button onclick="startAnimation()">▶ Start</button>
-        <button onclick="pauseAnimation()">⏸ Pause</button>
-        <button onclick="advancePhase()">⏭ Next Phase</button>
-        <button onclick="resetAnimation()">🔄 Reset</button>
+      <button onclick="toggleRun()">⏯ Старт/Пауза</button>
+      <button onclick="tick(true)">⏭ Следующее событие</button>
+      <button onclick="resetSim()">🔄 Сброс</button>
     </div>
+    <div class="log" id="globalLog"></div>
+  </div>
 
-    <div class="task-flow">
-        <h3>📊 Task Flow</h3>
-        <div>
-            Arthur 📥 → CTO 🔍 → Team 👥 → QA ✅ → CTO 👀 → Arthur 📤
-        </div>
-    </div>
+  <script>
+    const agents = [
+      { id: 'arthur', name: 'Arthur ♊', icon: '🧭', role: 'Orchestrator', relation: 'Дружит с Invoker', room: 'Комната Arthur' },
+      { id: 'bruce', name: 'Invoker', icon: '🎩', role: 'CTO', relation: 'Плотно работает с PM и Dev', room: 'Комната Invoker' },
+      { id: 'chen', name: 'Chen', icon: '📋', role: 'PM', relation: 'Хороший тандем с дизайнером', room: 'Комната Chen' },
+      { id: 'designer', name: 'Juggernaut', icon: '🎨', role: 'Designer', relation: 'Коллега Dev, дружит с PM', room: 'Комната Designer' },
+      { id: 'tinker', name: 'Tinker', icon: '💻', role: 'Engineer', relation: 'Коллега QA', room: 'Комната Tinker' },
+      { id: 'oracle', name: 'Oracle', icon: '🔮', role: 'Data', relation: 'Коллега Io', room: 'Комната Oracle' },
+      { id: 'io', name: 'Io', icon: '⚙️', role: 'MLOps', relation: 'Коллега Oracle', room: 'Комната Io' },
+      { id: 'qa', name: 'Bounty Hunter', icon: '🛡️', role: 'QA', relation: 'Жёсткий, но справедливый', room: 'Комната QA' }
+    ];
 
-    <script>
-        let animationRunning = false;
-        let phase = 0;
-        const phases = [
-            'Receiving task from Alavi',
-            'CTO analyzing and routing',
-            'Team working (coding, testing, deploying)',
-            'QA validating and running tests',
-            'CTO reviewing PRs',
-            'Arthur summarizing and notifying'
-        ];
+    const stages = [
+      { name: 'Arthur формулирует задачу', office: ['arthur'], kitchen: [] },
+      { name: 'Invoker декомпозирует и раздаёт', office: ['bruce', 'chen', 'designer'], kitchen: [] },
+      { name: 'Инженеры строят фичи', office: ['tinker', 'oracle', 'io'], kitchen: ['chen'] },
+      { name: 'QA проверяет и ловит баги', office: ['qa', 'tinker'], kitchen: [] },
+      { name: 'Invoker ревьюит и апрувит', office: ['bruce', 'qa'], kitchen: ['designer'] },
+      { name: 'Arthur проверяет URL и репортит', office: ['arthur', 'bruce'], kitchen: ['chen', 'tinker'] }
+    ];
 
-        function startAnimation() {
-            animationRunning = true;
-            runPhase();
-        }
+    let stage = 0;
+    let running = false;
+    let timer = null;
 
-        function pauseAnimation() {
-            animationRunning = false;
-        }
+    function agentChip(a, active = false) {
+      return `<div class="agent ${active ? 'active' : ''}">${a.icon} ${a.name}</div>`;
+    }
 
-        function resetAnimation() {
-            phase = 0;
-            animationRunning = false;
-            updateActivities();
-        }
+    function drawRooms() {
+      const rooms = document.getElementById('rooms');
+      rooms.innerHTML = agents.map(a => `
+        <article class="room" id="room-${a.id}">
+          <h3>${a.room}</h3>
+          ${agentChip(a)}
+          <div class="relationship">${a.role}</div>
+          <div class="relationship">🤝 ${a.relation}</div>
+          <div class="bed" title="Кровать"></div>
+        </article>
+      `).join('');
+    }
 
-        function advancePhase() {
-            phase = (phase + 1) % phases.length;
-            updateActivities();
-        }
+    function tick(manual = false) {
+      const s = stages[stage];
+      const officeSet = new Set(s.office);
+      const kitchenSet = new Set(s.kitchen);
 
-        function runPhase() {
-            if (!animationRunning) return;
+      document.getElementById('officeAgents').innerHTML = agents
+        .filter(a => officeSet.has(a.id))
+        .map(a => agentChip(a, true)).join('') || '<span class="relationship">Офис пуст.</span>';
 
-            updateActivities();
-            setTimeout(runPhase, 3000);
-        }
+      document.getElementById('kitchenAgents').innerHTML = agents
+        .filter(a => kitchenSet.has(a.id))
+        .map(a => agentChip(a, true)).join('') || '<span class="relationship">Никого, только кружки.</span>';
 
-        function updateActivities() {
-            const activities = {
-                'activity-arthur': phases[0],
-                'activity-bruce': phases[1],
-                'activity-chen': phases[1],
-                'activity-tinker': phases[2],
-                'activity-bounty': phases[2],
-                'activity-oracle': phases[2],
-                'activity-io': phases[2],
-                'activity-juggernaut': phases[2]
-            };
+      document.getElementById('officeLog').textContent = `Сцена: ${s.name}`;
+      document.getElementById('kitchenLog').textContent = kitchenSet.size
+        ? 'На кухне делятся контекстом и опытом.'
+        : 'Кухня ждёт следующий митап.';
 
-            for (const [id, text] of Object.entries(activities)) {
-                const el = document.getElementById(id);
-                if (el) el.textContent = text;
-            }
-        }
-    </script>
+      document.getElementById('globalLog').textContent = manual
+        ? `Ручной шаг: ${s.name}`
+        : `Авто: ${s.name}`;
+
+      stage = (stage + 1) % stages.length;
+    }
+
+    function loop() {
+      if (!running) return;
+      tick();
+      timer = setTimeout(loop, 2800);
+    }
+
+    function toggleRun() {
+      running = !running;
+      if (running) loop();
+      else clearTimeout(timer);
+    }
+
+    function resetSim() {
+      running = false;
+      clearTimeout(timer);
+      stage = 0;
+      tick(true);
+      document.getElementById('globalLog').textContent = 'Симуляция сброшена.';
+    }
+
+    drawRooms();
+    tick(true);
+  </script>
 </body>
 </html>
