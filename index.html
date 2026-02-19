@@ -23,6 +23,7 @@
     <span id="status"></span>
   </div>
   <canvas id="game" width="1180" height="680"></canvas>
+  <div id="legend" style="max-width:1180px;margin-top:8px;padding:8px;border:1px solid #334155;border-radius:8px;background:#0b1220;color:#cbd5e1;font-size:13px"></div>
 
 <script>
 const cvs = document.getElementById('game');
@@ -367,7 +368,13 @@ function resetSim(){
   agents.forEach((a,i)=>{a.x=rooms[i].x+70; a.y=ROOM_Y; a.path=[]; a.target=null; a.zone='room'; a.workLeft=0; a.kitchenLeft=0; a.toiletNeed=120; a.toiletLeft=0; a.bubble=''; a.seatAssigned=-1;});
   assignBehaviors();
 }
+function renderLegend(){
+  const rows = agentsMeta.map(([name,color],i)=>`<span style="display:inline-flex;align-items:center;margin-right:12px;margin-bottom:4px"><span style="display:inline-block;width:10px;height:10px;background:${color};border-radius:2px;margin-right:6px"></span>${name} → Комната ${i+1}</span>`).join('');
+  document.getElementById('legend').innerHTML = `<b>Кто есть кто:</b> ${rows}`;
+}
+
 window.toggle=toggle; window.tickOnce=tickOnce; window.resetSim=resetSim;
+renderLegend();
 assignBehaviors(); render();
 </script>
 </body>
