@@ -3,171 +3,273 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Agent Office Viz — Pixel Simulation</title>
+  <title>Agent Office Viz — Dota-like Pixel</title>
   <style>
-    body{margin:0;background:#111827;color:#e5e7eb;font-family:system-ui;padding:12px}
-    h1{margin:0 0 8px;font-size:20px}.sub{color:#9ca3af;margin-bottom:8px}
+    body{margin:0;background:#0f172a;color:#e2e8f0;font-family:system-ui;padding:12px}
+    h1{margin:0 0 6px;font-size:20px}.sub{color:#94a3b8;margin-bottom:8px}
     .hud{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
     button{background:#334155;color:#fff;border:1px solid #64748b;border-radius:8px;padding:7px 10px;cursor:pointer}
     #status{color:#cbd5e1;font-size:13px}
-    canvas{display:block;max-width:1100px;width:100%;image-rendering:pixelated;border:2px solid #334155;border-radius:10px;background:#7ea5c5}
+    canvas{display:block;max-width:1180px;width:100%;image-rendering:pixelated;border:2px solid #334155;border-radius:10px;background:#89a9c5}
   </style>
 </head>
 <body>
-  <h1>🏢 Agent Office Viz — живой пиксельный офис</h1>
-  <div class="sub">Теперь агенты реально идут по маршрутам + показывают облака общения.</div>
+  <h1>🏢 Agent Office Viz — улучшенный симулятор</h1>
+  <div class="sub">Dota-like пиксель-стиль, маршруты без пересечений, таймеры работы/кухни, туалет каждые 2 часа, персональная рандомность.</div>
   <div class="hud">
     <button onclick="toggle()">⏯ Старт/Пауза</button>
-    <button onclick="stepTick()">⏭ Шаг</button>
+    <button onclick="tickOnce()">⏭ Шаг</button>
     <button onclick="resetSim()">🔄 Сброс</button>
     <span id="status"></span>
   </div>
-  <canvas id="game" width="1100" height="620"></canvas>
+  <canvas id="game" width="1180" height="680"></canvas>
 
 <script>
 const cvs = document.getElementById('game');
 const ctx = cvs.getContext('2d');
 ctx.imageSmoothingEnabled = false;
 
-const NAMES = ['Arthur','Invoker','Chen','Designer','Tinker','Oracle','Io','QA'];
-const COLORS = ['#60a5fa','#a78bfa','#f472b6','#fb7185','#22d3ee','#f43f5e','#facc15','#4ade80'];
+const agentsMeta = [
+  ['Arthur','#60a5fa'],['Invoker','#a78bfa'],['Chen','#f472b6'],['Designer','#fb7185'],
+  ['Tinker','#22d3ee'],['Oracle','#f43f5e'],['Io','#facc15'],['QA','#4ade80']
+];
 
-const HOME = Array.from({length:8},(_,i)=>[80+i*132+42,560]);
-const OFFICE = [[190,170],[280,190],[360,160],[450,190],[540,165],[620,190],[330,260],[490,250]];
-const KITCHEN = [[770,170],[840,190],[920,170],[1000,190],[900,280],[800,260]];
-const OFFICE_DOOR=[700,390], KITCHEN_DOOR=[740,220], ROOMS_DOOR=[700,430];
+// spaces
+const ROOM_Y = 570;
+const rooms = Array.from({length:8},(_,i)=>({name:`Комната ${agentsMeta[i][0]}`, x:20+i*145, y:430, w:140, h:230, bed:[45+i*145,625]}));
+const office = {name:'Офис', x:20, y:20, w:760, h:390};
+const kitchen = {name:'Кухня', x:800, y:20, w:360, h:280};
+const toilet = {name:'Туалет', x:800, y:320, w:360, h:90};
 
-const phrasesTask = ['Есть задача, работаем','Берём тикет','Синк с Invoker','Делаем фичу','Проверяю PR'];
-const phrasesNoTask = ['Бэклог пуст','Пока тихо','Жду задачу'];
-const phrasesKitchen = ['☕ sync','Обмен опытом','Есть новости','Обсудили баг'];
+const officeSeats = [
+  [120,120],[220,120],[320,120],[420,120],[520,120],[620,120],[240,220],[420,220]
+];
+const kitchenSeats = [[860,90],[950,90],[1040,90],[900,200],[1030,200]];
+const toiletSpots = [[860,365],[960,365],[1060,365]];
 
-const agents = NAMES.map((n,i)=>(
-  {id:n.toLowerCase(),name:n,color:COLORS[i],x:HOME[i][0],y:HOME[i][1],speed:1.4,queue:[],target:null,home:HOME[i],zone:'room',bubble:'',bubbleT:0}
-));
+const PATH = {
+  roomDoor:[740,430], officeDoor:[740,280], kitchenDoor:[800,170], toiletDoor:[800,365]
+};
 
-let running=false, timer, simMin=9*60, phase=0;
-// 1 сек = 1 сим минуте
+let simMin = 9*60; // 09:00
+let running=false, loopHandle;
 
 function hm(m){const h=((m/60)|0)%24,mm=m%60;return `${String(h).padStart(2,'0')}:${String(mm).padStart(2,'0')}`}
-function r(arr){return arr[(Math.random()*arr.length)|0]}
-function jitter(p){return [p[0]+(Math.random()*16-8), p[1]+(Math.random()*12-6)]}
+function rnd(a){return a[(Math.random()*a.length)|0]}
+function chance(p){return Math.random()<p}
+function jitter([x,y],jx=8,jy=6){return [x+Math.random()*jx-jx/2,y+Math.random()*jy-jy/2]}
 
-function say(a,text,ms=2400){a.bubble=text;a.bubbleT=performance.now()+ms;}
+const events = [
+  {text:'📞 звонок от родственников', p:0.02, effect:'room'},
+  {text:'🤕 болит голова', p:0.018, effect:'kitchen'},
+  {text:'☕ захотел кофе', p:0.03, effect:'kitchen'},
+  {text:'🔥 срочный тикет', p:0.05, effect:'office'},
+  {text:'💬 синк с коллегой', p:0.04, effect:'office'}
+];
 
-function routeTo(a, zone, point){
-  a.queue=[];
-  if(zone==='office') a.queue.push(OFFICE_DOOR, jitter(point));
-  else if(zone==='kitchen') a.queue.push(KITCHEN_DOOR, jitter(point));
-  else a.queue.push(ROOMS_DOOR, [a.home[0]+(Math.random()*10-5), a.home[1]+(Math.random()*8-4)]);
-  a.target=null;
-  a.zone=zone;
+const agents = agentsMeta.map((m,i)=>(
+  { id:m[0].toLowerCase(), name:m[0], color:m[1],
+    x:rooms[i].x+70, y:ROOM_Y, vx:0, vy:0, speed:1.45 + Math.random()*0.35,
+    target:null, path:[], zone:'room', seat:i,
+    workLeft:0, kitchenLeft:0, toiletNeed:120, toiletLeft:0,
+    bubble:'', bubbleUntil:0, state:'idle', personality:Math.random() }
+));
+
+function bubble(a,t,d=2200){a.bubble=t;a.bubbleUntil=performance.now()+d}
+
+function setPath(a, points){ a.path = points.map(p=>[p[0],p[1]]); a.target = null; }
+function goOffice(a, seatIdx){
+  const seat = jitter(officeSeats[seatIdx%officeSeats.length],10,8);
+  setPath(a,[PATH.roomDoor, PATH.officeDoor, seat]);
+  a.zone='office'; a.state='walk';
+}
+function goRoom(a){
+  const i = agents.indexOf(a);
+  const home = [rooms[i].x+70 + (Math.random()*10-5), ROOM_Y + (Math.random()*6-3)];
+  setPath(a,[PATH.officeDoor, PATH.roomDoor, home]);
+  a.zone='room'; a.state='walk';
+}
+function goKitchen(a){
+  const seat = jitter(rnd(kitchenSeats),10,8);
+  setPath(a,[PATH.officeDoor, PATH.kitchenDoor, seat]);
+  a.zone='kitchen'; a.state='walk';
+}
+function goToilet(a){
+  const spot = jitter(rnd(toiletSpots),8,4);
+  setPath(a,[PATH.officeDoor, PATH.toiletDoor, spot]);
+  a.zone='toilet'; a.state='walk';
 }
 
-function simulateTick(){
-  const hasTask = Math.random() < 0.67;
-  const kitchenTime = simMin % 10 === 0;
+function assignBehaviors(){
+  // frequent reposition / task checks each minute
+  const hasTasks = chance(0.68);
 
-  // 4-фазный цикл: в офис -> чек задач -> работа -> домой
-  if(phase===0){
-    agents.forEach((a,i)=>routeTo(a,'office',OFFICE[i%OFFICE.length]));
-    agents.forEach(a=>say(a,'Иду в офис'));
-  }
-  if(phase===1){
-    agents.forEach((a,i)=>{
-      if(hasTask){ routeTo(a,'office',OFFICE[(i+2)%OFFICE.length]); say(a,r(phrasesTask)); }
-      else { if(Math.random()<0.5){ routeTo(a,'room',a.home); say(a,r(phrasesNoTask)); } }
-    });
-  }
-  if(phase===2){
-    agents.forEach((a,i)=>{
-      if(hasTask && Math.random()<0.8){ routeTo(a,'office',OFFICE[(i+4)%OFFICE.length]); }
-      else { routeTo(a,'room',a.home); }
-    });
-  }
-  if(phase===3){
-    agents.forEach(a=>{routeTo(a,'room',a.home); if(Math.random()<0.35) say(a,'Возвращаюсь');});
-  }
+  agents.forEach((a, i) => {
+    a.toiletNeed -= 1;
 
-  // кухонные митапы каждые 10 минут
-  if(kitchenTime){
-    [...agents].sort(()=>Math.random()-0.5).slice(0,3).forEach((a,i)=>{
-      routeTo(a,'kitchen',KITCHEN[(i+Math.floor(Math.random()*KITCHEN.length))%KITCHEN.length]);
-      say(a,r(phrasesKitchen),2800);
-    });
-  }
+    // forced toilet every 2 hours
+    if (a.toiletNeed <= 0 && a.zone !== 'toilet') {
+      goToilet(a); a.toiletLeft = 3 + (Math.random()*2|0); bubble(a,'🚻 иду в туалет',2000); a.toiletNeed = 120;
+      return;
+    }
 
-  const lbl=['Идут в офис','Проверяют задачи','Работа / пауза','Возврат в комнаты'][phase];
-  document.getElementById('status').textContent = `[${hm(simMin)}] ${lbl} • ${hasTask?'задачи есть':'задач нет'}`;
-  phase=(phase+1)%4; simMin++;
+    // random personal events
+    const ev = events.find(e=>chance(e.p * (0.8 + a.personality*0.7)));
+    if (ev && a.state !== 'walk') {
+      bubble(a, ev.text, 2600);
+      if (ev.effect==='kitchen') { goKitchen(a); a.kitchenLeft = 3 + (Math.random()*2|0); }
+      else if (ev.effect==='office') { goOffice(a, (i+2)%officeSeats.length); a.workLeft = 15 + (Math.random()*30|0); }
+      else { goRoom(a); }
+      return;
+    }
+
+    // work timer max 45 min
+    if (a.zone==='office' && a.workLeft>0) { a.workLeft -= 1; if (a.workLeft===0) { bubble(a,'⏰ 45 мин хватит',1800); goRoom(a); } return; }
+    // kitchen max 5 min
+    if (a.zone==='kitchen' && a.kitchenLeft>0) { a.kitchenLeft -= 1; if (a.kitchenLeft===0) { bubble(a,'возвращаюсь',1400); goOffice(a, i); a.workLeft = 8 + (Math.random()*14|0); } return; }
+    // toilet short
+    if (a.zone==='toilet' && a.toiletLeft>0) { a.toiletLeft -= 1; if (a.toiletLeft===0) { bubble(a,'готово',1200); goOffice(a, i); a.workLeft = 6 + (Math.random()*12|0); } return; }
+
+    // normal flow
+    if (hasTasks) {
+      if (a.zone!=='office' || chance(0.25)) {
+        goOffice(a, (i + (Math.random()*3|0)) % officeSeats.length);
+        a.workLeft = 12 + (Math.random()*34|0); // <=45 controlled by decrement
+        if (a.workLeft > 45) a.workLeft = 45;
+        if (chance(0.2)) bubble(a,'беру задачу',1400);
+      }
+    } else {
+      if (a.zone!=='room' || chance(0.35)) {
+        goRoom(a);
+        if (chance(0.25)) bubble(a,'нет задач',1300);
+      }
+    }
+
+    // group kitchen every 10 min
+    if (simMin % 10 === 0 && chance(0.35)) {
+      goKitchen(a);
+      a.kitchenLeft = 2 + (Math.random()*3|0); // max 5
+      if (a.kitchenLeft>5) a.kitchenLeft=5;
+      bubble(a, rnd(['☕ кухня','💬 делимся опытом','🧠 обсуждаем']), 2200);
+    }
+  });
+
+  document.getElementById('status').textContent = `[${hm(simMin)}] ${hasTasks?'В офисе есть задачи':'Бэклог пуст'} • Агенты двигаются по таймерам и случайным событиям`;
+  simMin += 1;
 }
 
-function moveAgent(a){
-  if(!a.target && a.queue.length) a.target = a.queue.shift();
-  if(!a.target) return;
+function stepMove(a){
+  if(!a.target && a.path.length) a.target = a.path.shift();
+  if(!a.target){a.state='idle'; return;}
   const dx=a.target[0]-a.x, dy=a.target[1]-a.y, d=Math.hypot(dx,dy);
-  if(d<=a.speed){ a.x=a.target[0]; a.y=a.target[1]; a.target=null; return; }
-  a.x += dx/d*a.speed; a.y += dy/d*a.speed;
+  if(d<=a.speed){a.x=a.target[0];a.y=a.target[1];a.target=null; return;}
+  a.x += dx/d*a.speed; a.y += dy/d*a.speed; a.state='walk';
+}
+
+function avoidOverlap(){
+  for(let i=0;i<agents.length;i++){
+    for(let j=i+1;j<agents.length;j++){
+      const a=agents[i], b=agents[j];
+      const dx=b.x-a.x, dy=b.y-a.y, d=Math.hypot(dx,dy) || 0.001;
+      const min=22;
+      if(d<min){
+        const push=(min-d)/2;
+        const nx=dx/d, ny=dy/d;
+        a.x -= nx*push; a.y -= ny*push;
+        b.x += nx*push; b.y += ny*push;
+      }
+    }
+  }
 }
 
 function drawFloor(x,y,w,h){
   ctx.fillStyle='#be9567'; ctx.fillRect(x,y,w,h);
-  for(let i=0;i<w;i+=28){ctx.fillStyle=(i/28)%2?'#b8895d':'#c89d6f';ctx.fillRect(x+i,y,14,h)}
+  for(let i=0;i<w;i+=28){ctx.fillStyle=((i/28)&1)?'#b8895d':'#c89d6f';ctx.fillRect(x+i,y,14,h)}
   for(let j=0;j<h;j+=20){ctx.fillStyle='rgba(60,35,15,.16)';ctx.fillRect(x,y+j,w,2)}
 }
+function drawLabel(text,x,y){ctx.fillStyle='#e2e8f0';ctx.font='12px sans-serif';ctx.fillText(text,x,y)}
+
+function drawComputers(){
+  officeSeats.forEach(([x,y])=>{ctx.fillStyle='#1e293b';ctx.fillRect(x-16,y-10,32,12);ctx.fillStyle='#0ea5e9';ctx.fillRect(x-12,y-8,24,8);ctx.fillStyle='#6b7280';ctx.fillRect(x-9,y+3,18,4);});
+}
+
 function drawMap(){
   ctx.clearRect(0,0,cvs.width,cvs.height);
-  drawFloor(20,20,700,390); ctx.strokeStyle='#1f2937'; ctx.lineWidth=4; ctx.strokeRect(20,20,700,390);
-  drawFloor(740,20,340,390); ctx.strokeRect(740,20,340,390);
-  drawFloor(20,430,1060,170); ctx.strokeRect(20,430,1060,170);
+  drawFloor(office.x,office.y,office.w,office.h); ctx.strokeStyle='#1f2937'; ctx.lineWidth=4; ctx.strokeRect(office.x,office.y,office.w,office.h);
+  drawFloor(kitchen.x,kitchen.y,kitchen.w,kitchen.h); ctx.strokeRect(kitchen.x,kitchen.y,kitchen.w,kitchen.h);
+  drawFloor(toilet.x,toilet.y,toilet.w,toilet.h); ctx.strokeRect(toilet.x,toilet.y,toilet.w,toilet.h);
+  drawFloor(20,430,1140,230); ctx.strokeRect(20,430,1140,230);
 
-  ctx.fillStyle='#9ca3af'; ctx.fillRect(70,70,180,40); ctx.fillRect(70,115,180,16);
-  ctx.fillStyle='#4b5563'; ctx.fillRect(70,250,210,70);
-  ctx.fillStyle='#d9b57a'; ctx.fillRect(330,220,170,90);
-  ctx.fillStyle='#93c5fd'; ctx.fillRect(510,230,150,70);
-  ctx.fillStyle='#94a3b8'; ctx.fillRect(760,60,80,120);
-  ctx.fillStyle='#cbd5e1'; ctx.fillRect(855,75,200,40);
-  ctx.fillStyle='#e2e8f0'; ctx.fillRect(790,240,220,80);
+  drawLabel('ОФИС',32,42); drawLabel('КУХНЯ',812,42); drawLabel('ТУАЛЕТ',812,342); drawLabel('КОМНАТЫ',32,452);
 
-  for(let i=0;i<8;i++){
-    const x=30+i*132;
-    ctx.strokeRect(x,440,122,150); ctx.fillStyle='#93c5fd'; ctx.fillRect(x+18,548,80,26);
-  }
+  // furniture
+  ctx.fillStyle='#475569'; ctx.fillRect(80,80,190,50); // rack
+  ctx.fillStyle='#4b5563'; ctx.fillRect(95,250,220,70); // sofa
+  ctx.fillStyle='#d9b57a'; ctx.fillRect(360,220,190,90); // table
+  ctx.fillStyle='#93c5fd'; ctx.fillRect(570,230,170,70); // sofa2
+  ctx.fillStyle='#94a3b8'; ctx.fillRect(820,70,85,120); // fridge
+  ctx.fillStyle='#e2e8f0'; ctx.fillRect(930,90,200,44); // counter
+  ctx.fillStyle='#cbd5e1'; ctx.fillRect(860,210,220,80); // kitchen table
+  ctx.fillStyle='#f1f5f9'; ctx.fillRect(840,350,290,44); // toilet sinks
+
+  drawComputers();
+
+  // rooms beds + names
+  rooms.forEach((r,i)=>{
+    ctx.strokeRect(r.x,r.y,r.w,r.h);
+    ctx.fillStyle='#93c5fd'; ctx.fillRect(r.bed[0],r.bed[1],70,24);
+    drawLabel(agentsMeta[i][0], r.x+8, r.y+16);
+  });
 }
 
 function drawBubble(a){
-  if(!a.bubble || performance.now()>a.bubbleT) return;
-  const w=Math.max(58,a.bubble.length*6+10), h=20;
+  if(!a.bubble || performance.now()>a.bubbleUntil) return;
+  const txt=a.bubble;
+  const w=Math.max(72, txt.length*6+10), h=20;
   const x=a.x-w/2, y=a.y-42;
   ctx.fillStyle='rgba(255,255,255,.95)'; ctx.fillRect(x,y,w,h);
-  ctx.fillStyle='#111827'; ctx.font='10px sans-serif'; ctx.fillText(a.bubble,x+5,y+13);
+  ctx.fillStyle='#0f172a'; ctx.font='10px sans-serif'; ctx.fillText(txt,x+5,y+13);
+}
+function drawTimer(a){
+  let t='';
+  if(a.zone==='office' && a.workLeft>0) t=`⏳${a.workLeft}м`;
+  if(a.zone==='kitchen' && a.kitchenLeft>0) t=`🍵${a.kitchenLeft}м`;
+  if(a.zone==='toilet' && a.toiletLeft>0) t=`🚻${a.toiletLeft}м`;
+  if(!t) return;
+  ctx.fillStyle='rgba(15,23,42,.85)'; ctx.fillRect(a.x-20,a.y-54,40,10);
+  ctx.fillStyle='#f8fafc'; ctx.font='9px sans-serif'; ctx.fillText(t,a.x-18,a.y-46);
 }
 function drawAgent(a){
   const x=a.x|0,y=a.y|0;
-  ctx.fillStyle='rgba(0,0,0,.25)'; ctx.fillRect(x-8,y+10,16,3);
-  ctx.fillStyle='#111827'; ctx.fillRect(x-10,y-20,20,22);
-  ctx.fillStyle=a.color; ctx.fillRect(x-8,y-26,16,8);
-  ctx.fillStyle='#f8fafc'; ctx.fillRect(x-4,y-12,8,8);
-  ctx.fillStyle='#0f172a'; ctx.fillRect(x-8,y+2,6,8); ctx.fillRect(x+2,y+2,6,8);
-  drawBubble(a);
+  ctx.fillStyle='rgba(0,0,0,.22)'; ctx.fillRect(x-9,y+10,18,3);
+  ctx.fillStyle='#111827'; ctx.fillRect(x-10,y-20,20,22); // body
+  ctx.fillStyle=a.color; ctx.fillRect(x-8,y-27,16,9); // helmet/icon vibe
+  ctx.fillStyle='#f8fafc'; ctx.fillRect(x-4,y-12,8,8); // face
+  // walk legs animation
+  const step = Math.floor(performance.now()/120)%2;
+  ctx.fillStyle='#0f172a';
+  if(step){ctx.fillRect(x-8,y+2,6,8);ctx.fillRect(x+2,y+1,6,8);} else {ctx.fillRect(x-8,y+1,6,8);ctx.fillRect(x+2,y+2,6,8);} 
+  drawTimer(a); drawBubble(a);
 }
 
 function render(){
   drawMap();
-  agents.forEach(a=>{moveAgent(a); drawAgent(a);});
+  agents.forEach(stepMove);
+  avoidOverlap();
+  agents.forEach(drawAgent);
   requestAnimationFrame(render);
 }
 
-function loop(){ if(!running) return; simulateTick(); timer=setTimeout(loop,1000); }
-function toggle(){ running=!running; if(running) loop(); else clearTimeout(timer); }
-function stepTick(){ simulateTick(); }
+function loop(){ if(!running) return; assignBehaviors(); loopHandle=setTimeout(loop,1000); }
+function toggle(){ running=!running; if(running) loop(); else clearTimeout(loopHandle); }
+function tickOnce(){ assignBehaviors(); }
 function resetSim(){
-  running=false; clearTimeout(timer); simMin=9*60; phase=0;
-  agents.forEach((a,i)=>{a.x=HOME[i][0];a.y=HOME[i][1];a.queue=[];a.target=null;a.bubble='';});
-  simulateTick();
+  running=false; clearTimeout(loopHandle); simMin=9*60;
+  agents.forEach((a,i)=>{a.x=rooms[i].x+70; a.y=ROOM_Y; a.path=[]; a.target=null; a.zone='room'; a.workLeft=0; a.kitchenLeft=0; a.toiletNeed=120; a.toiletLeft=0; a.bubble='';});
+  assignBehaviors();
 }
-window.toggle=toggle; window.stepTick=stepTick; window.resetSim=resetSim;
-
-simulateTick(); render();
+window.toggle=toggle; window.tickOnce=tickOnce; window.resetSim=resetSim;
+assignBehaviors(); render();
 </script>
 </body>
 </html>
