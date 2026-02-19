@@ -32,6 +32,7 @@ ctx.imageSmoothingEnabled = false;
 
 const bgImg = new Image();
 let bgReady = false;
+const USE_GEMINI_BG = false; // user requested office-like practical background
 bgImg.onload = () => { bgReady = true; };
 bgImg.src = './assets/office_bg.png';
 
@@ -265,9 +266,9 @@ function drawComputers(){
 function drawMap(){
   ctx.clearRect(0,0,cvs.width,cvs.height);
 
-  if (bgReady) {
+  if (USE_GEMINI_BG && bgReady) {
     ctx.drawImage(bgImg, 0, 0, cvs.width, cvs.height);
-    ctx.fillStyle = 'rgba(15,23,42,.24)';
+    ctx.fillStyle = 'rgba(15,23,42,.14)';
     ctx.fillRect(0,0,cvs.width,cvs.height);
   } else {
     drawFloor(office.x,office.y,office.w,office.h); ctx.strokeStyle='#1f2937'; ctx.lineWidth=4; ctx.strokeRect(office.x,office.y,office.w,office.h);
@@ -285,6 +286,13 @@ function drawMap(){
   ctx.fillStyle='rgba(15,23,42,.7)';
   ctx.fillRect(24,24,64,18); ctx.fillRect(804,24,70,18); ctx.fillRect(804,324,84,18); ctx.fillRect(24,434,88,18);
   drawLabel('ОФИС',30,37); drawLabel('КУХНЯ',810,37); drawLabel('ТУАЛЕТ',810,337); drawLabel('КОМНАТЫ',30,447);
+
+  // office walls/windows for realistic office vibe
+  ctx.fillStyle='#dbe4ee'; ctx.fillRect(20,20,760,55);
+  ctx.fillStyle='#c6d3e2'; ctx.fillRect(800,20,360,55);
+  ctx.fillStyle='#9fb3c8'; ctx.fillRect(90,30,180,30);   // window 1
+  ctx.fillStyle='#9fb3c8'; ctx.fillRect(320,30,220,30);  // window 2
+  ctx.fillStyle='#9fb3c8'; ctx.fillRect(860,30,210,30);  // kitchen window
 
   // furniture fallback accents and props
   ctx.fillStyle='#475569'; ctx.fillRect(80,80,190,50);
