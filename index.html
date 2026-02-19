@@ -3,11 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Agent Office Viz — Pixel Mode</title>
+  <title>Agent Office Viz — Pixel Simulation</title>
   <style>
     body{margin:0;background:#111827;color:#e5e7eb;font-family:system-ui;padding:12px}
-    h1{margin:0 0 8px;font-size:20px}
-    .sub{color:#9ca3af;margin-bottom:8px}
+    h1{margin:0 0 8px;font-size:20px}.sub{color:#9ca3af;margin-bottom:8px}
     .hud{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
     button{background:#334155;color:#fff;border:1px solid #64748b;border-radius:8px;padding:7px 10px;cursor:pointer}
     #status{color:#cbd5e1;font-size:13px}
@@ -15,11 +14,11 @@
   </style>
 </head>
 <body>
-  <h1>🏢 Agent Office Viz — Pixel Design</h1>
-  <div class="sub">Стиль как на референсе: пиксельная 2D сцена, мебель, комнаты, кухня, живое движение.</div>
+  <h1>🏢 Agent Office Viz — живой пиксельный офис</h1>
+  <div class="sub">Теперь агенты реально идут по маршрутам + показывают облака общения.</div>
   <div class="hud">
     <button onclick="toggle()">⏯ Старт/Пауза</button>
-    <button onclick="step()">⏭ Шаг</button>
+    <button onclick="stepTick()">⏭ Шаг</button>
     <button onclick="resetSim()">🔄 Сброс</button>
     <span id="status"></span>
   </div>
@@ -30,113 +29,145 @@ const cvs = document.getElementById('game');
 const ctx = cvs.getContext('2d');
 ctx.imageSmoothingEnabled = false;
 
-const agents = [
-  ['arthur','#60a5fa'],['invoker','#a78bfa'],['chen','#f472b6'],['designer','#fb7185'],
-  ['tinker','#22d3ee'],['oracle','#f43f5e'],['io','#facc15'],['qa','#4ade80']
-].map((a,i)=>({id:a[0],color:a[1],x:80+i*60,y:560,tx:80+i*60,ty:560,home:[80+i*120,560]}));
+const NAMES = ['Arthur','Invoker','Chen','Designer','Tinker','Oracle','Io','QA'];
+const COLORS = ['#60a5fa','#a78bfa','#f472b6','#fb7185','#22d3ee','#f43f5e','#facc15','#4ade80'];
 
-const officePts=[[180,150],[260,180],[340,140],[460,170],[540,140],[420,250],[280,260]];
-const kitchenPts=[[760,150],[840,170],[920,150],[1000,190],[900,280],[800,260]];
-let running=false, simMin=9*60, cycle=0, timer;
+const HOME = Array.from({length:8},(_,i)=>[80+i*132+42,560]);
+const OFFICE = [[190,170],[280,190],[360,160],[450,190],[540,165],[620,190],[330,260],[490,250]];
+const KITCHEN = [[770,170],[840,190],[920,170],[1000,190],[900,280],[800,260]];
+const OFFICE_DOOR=[700,390], KITCHEN_DOOR=[740,220], ROOMS_DOOR=[700,430];
 
-function rnd(arr){return arr[(Math.random()*arr.length)|0]}
-function hm(m){const h=((m/60)|0)%24,mm=m%60;return String(h).padStart(2,'0')+':'+String(mm).padStart(2,'0')}
+const phrasesTask = ['Есть задача, работаем','Берём тикет','Синк с Invoker','Делаем фичу','Проверяю PR'];
+const phrasesNoTask = ['Бэклог пуст','Пока тихо','Жду задачу'];
+const phrasesKitchen = ['☕ sync','Обмен опытом','Есть новости','Обсудили баг'];
 
-function zoneTarget(kind){
-  const p = kind==='kitchen'?rnd(kitchenPts):rnd(officePts);
-  return [p[0]+Math.random()*22-11,p[1]+Math.random()*18-9];
+const agents = NAMES.map((n,i)=>(
+  {id:n.toLowerCase(),name:n,color:COLORS[i],x:HOME[i][0],y:HOME[i][1],speed:1.4,queue:[],target:null,home:HOME[i],zone:'room',bubble:'',bubbleT:0}
+));
+
+let running=false, timer, simMin=9*60, phase=0;
+// 1 сек = 1 сим минуте
+
+function hm(m){const h=((m/60)|0)%24,mm=m%60;return `${String(h).padStart(2,'0')}:${String(mm).padStart(2,'0')}`}
+function r(arr){return arr[(Math.random()*arr.length)|0]}
+function jitter(p){return [p[0]+(Math.random()*16-8), p[1]+(Math.random()*12-6)]}
+
+function say(a,text,ms=2400){a.bubble=text;a.bubbleT=performance.now()+ms;}
+
+function routeTo(a, zone, point){
+  a.queue=[];
+  if(zone==='office') a.queue.push(OFFICE_DOOR, jitter(point));
+  else if(zone==='kitchen') a.queue.push(KITCHEN_DOOR, jitter(point));
+  else a.queue.push(ROOMS_DOOR, [a.home[0]+(Math.random()*10-5), a.home[1]+(Math.random()*8-4)]);
+  a.target=null;
+  a.zone=zone;
 }
 
-function assign(){
-  // cycle: office -> check task -> work/rest -> room
-  const hasTask = Math.random()<0.65;
-  const kitchenTick = simMin % 10 === 0;
+function simulateTick(){
+  const hasTask = Math.random() < 0.67;
+  const kitchenTime = simMin % 10 === 0;
 
-  if(cycle===0){ agents.forEach(a=>{[a.tx,a.ty]=zoneTarget('office')}) }
-  if(cycle===1){
+  // 4-фазный цикл: в офис -> чек задач -> работа -> домой
+  if(phase===0){
+    agents.forEach((a,i)=>routeTo(a,'office',OFFICE[i%OFFICE.length]));
+    agents.forEach(a=>say(a,'Иду в офис'));
+  }
+  if(phase===1){
     agents.forEach((a,i)=>{
-      if(!hasTask && i%2===0){ a.tx=a.home[0]; a.ty=a.home[1]; }
-      else {[a.tx,a.ty]=zoneTarget('office')}
-    })
+      if(hasTask){ routeTo(a,'office',OFFICE[(i+2)%OFFICE.length]); say(a,r(phrasesTask)); }
+      else { if(Math.random()<0.5){ routeTo(a,'room',a.home); say(a,r(phrasesNoTask)); } }
+    });
   }
-  if(cycle===2){
-    agents.forEach(a=>{
-      if(hasTask && Math.random()<0.75){[a.tx,a.ty]=zoneTarget('office')} else {a.tx=a.home[0];a.ty=a.home[1]}
-    })
+  if(phase===2){
+    agents.forEach((a,i)=>{
+      if(hasTask && Math.random()<0.8){ routeTo(a,'office',OFFICE[(i+4)%OFFICE.length]); }
+      else { routeTo(a,'room',a.home); }
+    });
   }
-  if(cycle===3){ agents.forEach(a=>{a.tx=a.home[0];a.ty=a.home[1]}) }
+  if(phase===3){
+    agents.forEach(a=>{routeTo(a,'room',a.home); if(Math.random()<0.35) say(a,'Возвращаюсь');});
+  }
 
-  if(kitchenTick){
-    [...agents].sort(()=>Math.random()-0.5).slice(0,3).forEach(a=>{[a.tx,a.ty]=zoneTarget('kitchen')})
+  // кухонные митапы каждые 10 минут
+  if(kitchenTime){
+    [...agents].sort(()=>Math.random()-0.5).slice(0,3).forEach((a,i)=>{
+      routeTo(a,'kitchen',KITCHEN[(i+Math.floor(Math.random()*KITCHEN.length))%KITCHEN.length]);
+      say(a,r(phrasesKitchen),2800);
+    });
   }
 
-  const ev = ['синк на кухне','новая задача','пустой бэклог','QA нашёл баг','ревью у Invoker'][(Math.random()*5)|0];
-  document.getElementById('status').textContent = `[${hm(simMin)}] ${['Идут в офис','Проверка задач','Работа/простой','Возврат в комнаты'][cycle]} • ${ev}`;
-  cycle=(cycle+1)%4; simMin++;
+  const lbl=['Идут в офис','Проверяют задачи','Работа / пауза','Возврат в комнаты'][phase];
+  document.getElementById('status').textContent = `[${hm(simMin)}] ${lbl} • ${hasTask?'задачи есть':'задач нет'}`;
+  phase=(phase+1)%4; simMin++;
+}
+
+function moveAgent(a){
+  if(!a.target && a.queue.length) a.target = a.queue.shift();
+  if(!a.target) return;
+  const dx=a.target[0]-a.x, dy=a.target[1]-a.y, d=Math.hypot(dx,dy);
+  if(d<=a.speed){ a.x=a.target[0]; a.y=a.target[1]; a.target=null; return; }
+  a.x += dx/d*a.speed; a.y += dy/d*a.speed;
 }
 
 function drawFloor(x,y,w,h){
   ctx.fillStyle='#be9567'; ctx.fillRect(x,y,w,h);
   for(let i=0;i<w;i+=28){ctx.fillStyle=(i/28)%2?'#b8895d':'#c89d6f';ctx.fillRect(x+i,y,14,h)}
-  for(let j=0;j<h;j+=20){ctx.fillStyle='rgba(60,35,15,.18)';ctx.fillRect(x,y+j,w,2)}
+  for(let j=0;j<h;j+=20){ctx.fillStyle='rgba(60,35,15,.16)';ctx.fillRect(x,y+j,w,2)}
 }
+function drawMap(){
+  ctx.clearRect(0,0,cvs.width,cvs.height);
+  drawFloor(20,20,700,390); ctx.strokeStyle='#1f2937'; ctx.lineWidth=4; ctx.strokeRect(20,20,700,390);
+  drawFloor(740,20,340,390); ctx.strokeRect(740,20,340,390);
+  drawFloor(20,430,1060,170); ctx.strokeRect(20,430,1060,170);
 
-function drawFurniture(){
-  // left office
-  drawFloor(20,20,700,390);
-  ctx.strokeStyle='#1f2937'; ctx.lineWidth=4; ctx.strokeRect(20,20,700,390);
-  ctx.fillStyle='#9ca3af'; ctx.fillRect(70,70,180,40); // shelf
-  ctx.fillStyle='#6b7280'; ctx.fillRect(70,115,180,16);
-  ctx.fillStyle='#a3e635'; ctx.fillRect(295,70,18,18); // plant
-  ctx.fillStyle='#4b5563'; ctx.fillRect(70,250,210,70); // sofa
-  ctx.fillStyle='#d9b57a'; ctx.fillRect(330,220,170,90); // table
-  ctx.fillStyle='#93c5fd'; ctx.fillRect(510,230,150,70); // sofa2
+  ctx.fillStyle='#9ca3af'; ctx.fillRect(70,70,180,40); ctx.fillRect(70,115,180,16);
+  ctx.fillStyle='#4b5563'; ctx.fillRect(70,250,210,70);
+  ctx.fillStyle='#d9b57a'; ctx.fillRect(330,220,170,90);
+  ctx.fillStyle='#93c5fd'; ctx.fillRect(510,230,150,70);
+  ctx.fillStyle='#94a3b8'; ctx.fillRect(760,60,80,120);
+  ctx.fillStyle='#cbd5e1'; ctx.fillRect(855,75,200,40);
+  ctx.fillStyle='#e2e8f0'; ctx.fillRect(790,240,220,80);
 
-  // right kitchen
-  drawFloor(740,20,340,390);
-  ctx.strokeRect(740,20,340,390);
-  ctx.fillStyle='#94a3b8'; ctx.fillRect(760,60,80,120); // fridge
-  ctx.fillStyle='#cbd5e1'; ctx.fillRect(855,75,200,40); // counter
-  ctx.fillStyle='#e2e8f0'; ctx.fillRect(790,240,220,80); // kitchen table
-  ctx.fillStyle='#fca5a5'; ctx.fillRect(1020,88,20,20); // mug
-
-  // rooms strip
-  drawFloor(20,430,1060,170);
-  ctx.strokeRect(20,430,1060,170);
   for(let i=0;i<8;i++){
     const x=30+i*132;
-    ctx.strokeRect(x,440,122,150);
-    ctx.fillStyle='#93c5fd'; ctx.fillRect(x+18,548,80,26); // bed
+    ctx.strokeRect(x,440,122,150); ctx.fillStyle='#93c5fd'; ctx.fillRect(x+18,548,80,26);
   }
 }
 
+function drawBubble(a){
+  if(!a.bubble || performance.now()>a.bubbleT) return;
+  const w=Math.max(58,a.bubble.length*6+10), h=20;
+  const x=a.x-w/2, y=a.y-42;
+  ctx.fillStyle='rgba(255,255,255,.95)'; ctx.fillRect(x,y,w,h);
+  ctx.fillStyle='#111827'; ctx.font='10px sans-serif'; ctx.fillText(a.bubble,x+5,y+13);
+}
 function drawAgent(a){
-  // chibi pixel body
-  const x=a.x|0, y=a.y|0;
-  ctx.fillStyle='#111827'; ctx.fillRect(x-10,y-20,20,22); // cloak
-  ctx.fillStyle=a.color; ctx.fillRect(x-8,y-26,16,8); // hood
-  ctx.fillStyle='#f8fafc'; ctx.fillRect(x-4,y-12,8,8); // face
-  ctx.fillStyle='#0f172a'; ctx.fillRect(x-8,y+2,6,8); ctx.fillRect(x+2,y+2,6,8); // legs
+  const x=a.x|0,y=a.y|0;
+  ctx.fillStyle='rgba(0,0,0,.25)'; ctx.fillRect(x-8,y+10,16,3);
+  ctx.fillStyle='#111827'; ctx.fillRect(x-10,y-20,20,22);
+  ctx.fillStyle=a.color; ctx.fillRect(x-8,y-26,16,8);
+  ctx.fillStyle='#f8fafc'; ctx.fillRect(x-4,y-12,8,8);
+  ctx.fillStyle='#0f172a'; ctx.fillRect(x-8,y+2,6,8); ctx.fillRect(x+2,y+2,6,8);
+  drawBubble(a);
 }
 
 function render(){
-  ctx.clearRect(0,0,cvs.width,cvs.height);
-  drawFurniture();
-  agents.forEach(a=>{
-    a.x += (a.tx-a.x)*0.09;
-    a.y += (a.ty-a.y)*0.09;
-    drawAgent(a);
-  });
+  drawMap();
+  agents.forEach(a=>{moveAgent(a); drawAgent(a);});
   requestAnimationFrame(render);
 }
 
-function loop(){if(!running)return;assign();timer=setTimeout(loop,1000)}
-function toggle(){running=!running; if(running)loop(); else clearTimeout(timer)}
-function step(){assign()}
-function resetSim(){running=false;clearTimeout(timer);simMin=9*60;cycle=0;agents.forEach((a,i)=>{a.x=a.home[0];a.y=a.home[1];a.tx=a.home[0];a.ty=a.home[1]});assign()}
-window.toggle=toggle;window.step=step;window.resetSim=resetSim;
+function loop(){ if(!running) return; simulateTick(); timer=setTimeout(loop,1000); }
+function toggle(){ running=!running; if(running) loop(); else clearTimeout(timer); }
+function stepTick(){ simulateTick(); }
+function resetSim(){
+  running=false; clearTimeout(timer); simMin=9*60; phase=0;
+  agents.forEach((a,i)=>{a.x=HOME[i][0];a.y=HOME[i][1];a.queue=[];a.target=null;a.bubble='';});
+  simulateTick();
+}
+window.toggle=toggle; window.stepTick=stepTick; window.resetSim=resetSim;
 
-assign(); render();
+simulateTick(); render();
 </script>
 </body>
 </html>
