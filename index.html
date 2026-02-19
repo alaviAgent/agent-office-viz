@@ -50,6 +50,7 @@ const toilet = {name:'Туалет', x:800, y:320, w:360, h:90};
 const officeSeats = [
   [120,120],[220,120],[320,120],[420,120],[520,120],[620,120],[240,220],[420,220]
 ];
+const pcLogos = ['mac','linux','windows','linux','mac','windows','linux','mac'];
 const seatOwners = new Array(officeSeats.length).fill(null);
 const kitchenSeats = [[860,90],[950,90],[1040,90],[900,200],[1030,200]];
 const toiletSpots = [[860,365],[960,365],[1060,365]];
@@ -250,11 +251,14 @@ function drawLabel(text,x,y){ctx.fillStyle='#e2e8f0';ctx.font='12px sans-serif';
 function drawComputers(){
   officeSeats.forEach(([x,y],i)=>{
     const owner = seatOwners[i];
+    const logo = pcLogos[i % pcLogos.length];
     ctx.fillStyle='#1e293b'; ctx.fillRect(x-16,y-10,32,12);
-    ctx.fillStyle=owner ? '#ef4444' : '#22c55e'; ctx.fillRect(x-12,y-8,24,8); // red busy / green free
+    ctx.fillStyle=owner ? '#ef4444' : '#22c55e'; ctx.fillRect(x-12,y-8,24,8);
     ctx.fillStyle='#6b7280'; ctx.fillRect(x-9,y+3,18,4);
-    ctx.fillStyle='#e2e8f0'; ctx.font='9px sans-serif';
+    ctx.fillStyle='#e2e8f0'; ctx.font='8px sans-serif';
     ctx.fillText(owner ? `занят` : `свободен`, x-20, y-14);
+    ctx.fillStyle='#cbd5e1';
+    ctx.fillText(logo==='mac'?'':logo==='linux'?'🐧':'⊞', x+10, y+2);
   });
 }
 
@@ -287,16 +291,47 @@ function drawMap(){
   ctx.fillStyle='#4b5563'; ctx.fillRect(95,250,220,70);
   ctx.fillStyle='#d9b57a'; ctx.fillRect(360,220,190,90);
   ctx.fillStyle='#93c5fd'; ctx.fillRect(570,230,170,70);
-  ctx.fillStyle='#94a3b8'; ctx.fillRect(820,70,85,120);
-  ctx.fillStyle='#e2e8f0'; ctx.fillRect(930,90,200,44);
-  ctx.fillStyle='#cbd5e1'; ctx.fillRect(860,210,220,80);
+
+  // kitchen detailed
+  ctx.fillStyle='#94a3b8'; ctx.fillRect(820,70,85,120); // fridge body
+  ctx.fillStyle='#cbd5e1'; ctx.fillRect(825,76,75,8);   // fridge top strip
+  ctx.fillStyle='#64748b'; ctx.fillRect(892,120,5,52);  // handle
+  ctx.fillStyle='#0f172a'; ctx.fillRect(835,95,8,8);    // magnet 1
+  ctx.fillStyle='#ef4444'; ctx.fillRect(848,100,8,8);   // magnet 2
+  ctx.fillStyle='#22c55e'; ctx.fillRect(862,95,8,8);    // magnet 3
+
+  ctx.fillStyle='#e2e8f0'; ctx.fillRect(930,90,200,44); // counter
+  ctx.fillStyle='#64748b'; ctx.fillRect(930,130,200,8); // counter shadow
+  ctx.fillStyle='#1f2937'; ctx.fillRect(942,99,16,12);  // coffee machine
+  ctx.fillStyle='#0ea5e9'; ctx.fillRect(946,103,8,4);
+  ctx.fillStyle='#f59e0b'; ctx.fillRect(965,104,8,6);   // mug
+  ctx.fillStyle='#f97316'; ctx.fillRect(980,104,8,6);   // mug 2
+  ctx.fillStyle='#cbd5e1'; ctx.fillRect(860,210,220,80); // kitchen table
+  ctx.fillStyle='#94a3b8'; ctx.fillRect(880,230,40,40); // chair 1
+  ctx.fillStyle='#94a3b8'; ctx.fillRect(950,230,40,40); // chair 2
+  ctx.fillStyle='#94a3b8'; ctx.fillRect(1020,230,40,40);// chair 3
+
+  // toilet sinks
   ctx.fillStyle='#f1f5f9'; ctx.fillRect(840,350,290,44);
 
   drawComputers();
 
   rooms.forEach((r,i)=>{
     ctx.strokeRect(r.x,r.y,r.w,r.h);
-    ctx.fillStyle='rgba(147,197,253,.85)'; ctx.fillRect(r.bed[0],r.bed[1],70,24);
+
+    // unique beds per room
+    const bedColors = ['#93c5fd','#fca5a5','#86efac','#c4b5fd','#fcd34d','#67e8f9','#f9a8d4','#a3e635'];
+    const pillowColors = ['#e2e8f0','#fee2e2','#dcfce7','#ede9fe','#fef9c3','#ecfeff','#fdf2f8','#f7fee7'];
+    const bx = r.bed[0], by = r.bed[1];
+    ctx.fillStyle = bedColors[i%bedColors.length]; ctx.fillRect(bx,by,70,24);
+    ctx.fillStyle = pillowColors[i%pillowColors.length]; ctx.fillRect(bx+4,by+4,18,10);
+    if (i%2===0) { ctx.fillStyle='rgba(15,23,42,.22)'; ctx.fillRect(bx+32,by,6,24); }
+    if (i%3===0) { ctx.fillStyle='rgba(255,255,255,.25)'; ctx.fillRect(bx+55,by+2,10,6); }
+
+    // room mini decor
+    ctx.fillStyle='#334155'; ctx.fillRect(r.x+100, r.y+24, 28, 18); // mini shelf
+    ctx.fillStyle='#22c55e'; ctx.fillRect(r.x+108, r.y+18, 8, 8);   // plant
+
     drawLabel(agentsMeta[i][0], r.x+8, r.y+16);
   });
 }
