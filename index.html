@@ -44,6 +44,7 @@ const toilet = {name:'Туалет', x:800, y:320, w:360, h:90};
 const officeSeats = [
   [120,120],[220,120],[320,120],[420,120],[520,120],[620,120],[240,220],[420,220]
 ];
+const seatOwners = new Array(officeSeats.length).fill(null);
 const kitchenSeats = [[860,90],[950,90],[1040,90],[900,200],[1030,200]];
 const toiletSpots = [[860,365],[960,365],[1060,365]];
 
@@ -75,7 +76,7 @@ const events = [
 const agents = agentsMeta.map((m,i)=>(
   { id:m[0].toLowerCase(), name:m[0], color:m[1],
     x:rooms[i].x+70, y:ROOM_Y, vx:0, vy:0, speed:1.45 + Math.random()*0.35,
-    target:null, path:[], zone:'room', seat:i,
+    target:null, path:[], zone:'room', seat:i, seatAssigned:-1,
     workLeft:0, kitchenLeft:0, toiletNeed:120, toiletLeft:0,
     bubble:'', bubbleUntil:0, state:'idle', personality:Math.random(),
     lastX:rooms[i].x+70, lastY:ROOM_Y, stuckFrames:0 }
@@ -84,25 +85,54 @@ const agents = agentsMeta.map((m,i)=>(
 function bubble(a,t,d=2200){a.bubble=t;a.bubbleUntil=performance.now()+d}
 
 function setPath(a, points){ a.path = points.map(p=>[p[0],p[1]]); a.target = null; }
+
+function releaseSeat(a){
+  if (a.seatAssigned >= 0 && seatOwners[a.seatAssigned] === a.id) seatOwners[a.seatAssigned] = null;
+  a.seatAssigned = -1;
+}
+
+function reserveSeat(a, preferredIdx=0){
+  if (a.seatAssigned >= 0 && seatOwners[a.seatAssigned] === a.id) return a.seatAssigned;
+  const n = officeSeats.length;
+  for (let k=0; k<n; k++) {
+    const idx = (preferredIdx + k) % n;
+    if (!seatOwners[idx]) {
+      seatOwners[idx] = a.id;
+      a.seatAssigned = idx;
+      return idx;
+    }
+  }
+  return -1;
+}
+
 function goOffice(a, seatIdx){
   const lane = agents.indexOf(a);
-  const seat = jitter(officeSeats[seatIdx%officeSeats.length],10,8);
+  const reserved = reserveSeat(a, seatIdx%officeSeats.length);
+  if (reserved < 0) {
+    bubble(a,'🖥️ нет свободного ПК',1200);
+    goRoom(a);
+    return;
+  }
+  const seat = jitter(officeSeats[reserved],10,8);
   setPath(a,[lanePoint(PATH.roomDoor,lane), lanePoint(PATH.officeDoor,lane), seat]);
   a.zone='office'; a.state='walk';
 }
 function goRoom(a){
+  releaseSeat(a);
   const i = agents.indexOf(a);
   const home = [rooms[i].x+70 + (Math.random()*10-5), ROOM_Y + (Math.random()*6-3)];
   setPath(a,[lanePoint(PATH.officeDoor,i), lanePoint(PATH.roomDoor,i), home]);
   a.zone='room'; a.state='walk';
 }
 function goKitchen(a){
+  releaseSeat(a);
   const lane = agents.indexOf(a);
   const seat = jitter(rnd(kitchenSeats),10,8);
   setPath(a,[lanePoint(PATH.officeDoor,lane), lanePoint(PATH.kitchenDoor,lane), seat]);
   a.zone='kitchen'; a.state='walk';
 }
 function goToilet(a){
+  releaseSeat(a);
   const lane = agents.indexOf(a);
   const spot = jitter(rnd(toiletSpots),8,4);
   setPath(a,[lanePoint(PATH.officeDoor,lane), lanePoint(PATH.toiletDoor,lane), spot]);
@@ -212,7 +242,14 @@ function drawFloor(x,y,w,h){
 function drawLabel(text,x,y){ctx.fillStyle='#e2e8f0';ctx.font='12px sans-serif';ctx.fillText(text,x,y)}
 
 function drawComputers(){
-  officeSeats.forEach(([x,y])=>{ctx.fillStyle='#1e293b';ctx.fillRect(x-16,y-10,32,12);ctx.fillStyle='#0ea5e9';ctx.fillRect(x-12,y-8,24,8);ctx.fillStyle='#6b7280';ctx.fillRect(x-9,y+3,18,4);});
+  officeSeats.forEach(([x,y],i)=>{
+    const owner = seatOwners[i];
+    ctx.fillStyle='#1e293b'; ctx.fillRect(x-16,y-10,32,12);
+    ctx.fillStyle=owner ? '#ef4444' : '#22c55e'; ctx.fillRect(x-12,y-8,24,8); // red busy / green free
+    ctx.fillStyle='#6b7280'; ctx.fillRect(x-9,y+3,18,4);
+    ctx.fillStyle='#e2e8f0'; ctx.font='9px sans-serif';
+    ctx.fillText(owner ? `занят` : `свободен`, x-20, y-14);
+  });
 }
 
 function drawMap(){
@@ -287,7 +324,8 @@ function toggle(){ running=!running; if(running) loop(); else clearTimeout(loopH
 function tickOnce(){ assignBehaviors(); }
 function resetSim(){
   running=false; clearTimeout(loopHandle); simMin=9*60;
-  agents.forEach((a,i)=>{a.x=rooms[i].x+70; a.y=ROOM_Y; a.path=[]; a.target=null; a.zone='room'; a.workLeft=0; a.kitchenLeft=0; a.toiletNeed=120; a.toiletLeft=0; a.bubble='';});
+  for (let i=0;i<seatOwners.length;i++) seatOwners[i]=null;
+  agents.forEach((a,i)=>{a.x=rooms[i].x+70; a.y=ROOM_Y; a.path=[]; a.target=null; a.zone='room'; a.workLeft=0; a.kitchenLeft=0; a.toiletNeed=120; a.toiletLeft=0; a.bubble=''; a.seatAssigned=-1;});
   assignBehaviors();
 }
 window.toggle=toggle; window.tickOnce=tickOnce; window.resetSim=resetSim;
