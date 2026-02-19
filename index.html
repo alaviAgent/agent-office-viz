@@ -106,19 +106,24 @@ const zones = {
   kitchen:[[845,120],[980,120],[1120,120],[900,230],[1060,250],[950,330]],
 };
 
-const stages = [
-  {title:'Arthur получает задачу и формирует бриф', office:['arthur'], kitchen:[]},
-  {title:'Invoker + PM + Designer декомпозируют', office:['bruce','chen','designer'], kitchen:[]},
-  {title:'Разработка: инженеры в офисе, PM на кухне синкается', office:['tinker','oracle','io'], kitchen:['chen']},
-  {title:'QA гоняет тесты, Tinker чинит', office:['qa','tinker'], kitchen:[]},
-  {title:'Invoker ревьюит, Designer + QA sync на кухне', office:['bruce'], kitchen:['designer','qa']},
-  {title:'Arthur проверяет URL и репортит', office:['arthur','bruce'], kitchen:['chen','tinker']}
+const relationText = '🤝 Связи: Arthur↔Invoker (дружба), Chen↔Designer (сильная рабочая связка), Tinker↔QA (боевой дуэт), Oracle↔Io (инфра-партнёры).';
+const randomEvents = [
+  'Новая задача прилетела от Alavi.',
+  'Задача в очереди пуста — часть команды уходит в комнаты.',
+  'QA нашёл баг, Tinker возвращается в офис.',
+  'Invoker собрал быстрый sync у доски.',
+  'Oracle с Io обсуждают деплой.',
+  'Chen уточняет требования с дизайнером.'
 ];
 
-const relationText = '🤝 Связи: Arthur↔Invoker (дружба), Chen↔Designer (сильная рабочая связка), Tinker↔QA (боевой дуэт), Oracle↔Io (инфра-партнёры).';
+const state = Object.fromEntries(people.map(p => [p.id, {x:p.home[0], y:p.home[1], tx:p.home[0], ty:p.home[1], mode:'room'}]));
+let running = false;
+let tickTimer;
 
-const state = Object.fromEntries(people.map(p => [p.id, {x:p.home[0], y:p.home[1], tx:p.home[0], ty:p.home[1]}]));
-let idx = 0, running = false, tickTimer;
+// 1 real second = 1 simulated minute
+let simMinutes = 9 * 60; // start 09:00
+let cycleStep = 0;
+const cycle = ['go_office','check_tasks','work_or_idle','return_room'];
 
 const g = document.getElementById('agents');
 function drawAgents(){
@@ -131,30 +136,66 @@ function drawAgents(){
 }
 
 function rand(arr){ return arr[Math.floor(Math.random()*arr.length)] }
+function pickOffice(){ const [x,y]=rand(zones.office); return [x+Math.random()*18,y+Math.random()*18]; }
+function pickKitchen(){ const [x,y]=rand(zones.kitchen); return [x+Math.random()*16,y+Math.random()*16]; }
+function hhmm(total){ const h = Math.floor((total%1440)/60).toString().padStart(2,'0'); const m=(total%60).toString().padStart(2,'0'); return `${h}:${m}`; }
 
-function applyStage(){
-  const s = stages[idx];
-  const inOffice = new Set(s.office);
-  const inKitchen = new Set(s.kitchen);
+function sendTo(agentId, where){
+  const p = people.find(x => x.id===agentId);
+  if (!p) return;
+  if (where === 'office') {
+    const [x,y] = pickOffice();
+    Object.assign(state[agentId], {tx:x, ty:y, mode:'office'});
+  } else if (where === 'kitchen') {
+    const [x,y] = pickKitchen();
+    Object.assign(state[agentId], {tx:x, ty:y, mode:'kitchen'});
+  } else {
+    Object.assign(state[agentId], {tx:p.home[0] + (Math.random()*20-10), ty:p.home[1] + (Math.random()*12-6), mode:'room'});
+  }
+}
 
-  people.forEach(p => {
-    if (inOffice.has(p.id)) {
-      const [x,y] = rand(zones.office);
-      state[p.id].tx = x + Math.random()*18;
-      state[p.id].ty = y + Math.random()*18;
-    } else if (inKitchen.has(p.id)) {
-      const [x,y] = rand(zones.kitchen);
-      state[p.id].tx = x + Math.random()*16;
-      state[p.id].ty = y + Math.random()*16;
-    } else {
-      state[p.id].tx = p.home[0] + (Math.random()*20-10);
-      state[p.id].ty = p.home[1] + (Math.random()*12-6);
+function applyLogic(){
+  // kitchen meetup every 10 simulated minutes
+  if (simMinutes % 10 === 0) {
+    const shuffled = [...people].sort(() => Math.random() - 0.5);
+    const kitchenGroup = shuffled.slice(0, 2 + Math.floor(Math.random()*2));
+    kitchenGroup.forEach(p => sendTo(p.id, 'kitchen'));
+  }
+
+  const step = cycle[cycleStep];
+  const taskExists = Math.random() < 0.62; // randomness
+
+  if (step === 'go_office') {
+    people.forEach(p => sendTo(p.id, 'office'));
+  }
+
+  if (step === 'check_tasks') {
+    if (!taskExists) {
+      // no tasks: half go back to rooms
+      people.forEach((p, i) => sendTo(p.id, i % 2 ? 'room' : 'office'));
     }
-  });
+  }
 
-  document.getElementById('status').textContent = `Стадия ${idx+1}/${stages.length}: ${s.title}`;
+  if (step === 'work_or_idle') {
+    if (taskExists) {
+      const workers = people.filter(() => Math.random() < 0.75);
+      workers.forEach(p => sendTo(p.id, 'office'));
+      people.filter(p => !workers.includes(p)).forEach(p => sendTo(p.id, 'room'));
+    } else {
+      people.forEach(p => sendTo(p.id, 'room'));
+    }
+  }
+
+  if (step === 'return_room') {
+    people.forEach(p => sendTo(p.id, 'room'));
+  }
+
+  const eventSuffix = Math.random() < 0.35 ? ` • ${rand(randomEvents)}` : '';
+  document.getElementById('status').textContent = `[${hhmm(simMinutes)}] ${step.replaceAll('_',' ')}${eventSuffix}`;
   document.getElementById('relations').textContent = relationText;
-  idx = (idx + 1) % stages.length;
+
+  cycleStep = (cycleStep + 1) % cycle.length;
+  simMinutes += 1;
 }
 
 function animate(){
@@ -174,13 +215,17 @@ function animate(){
   requestAnimationFrame(animate);
 }
 
-function nextStage(manual=false){ applyStage(); if (manual && !running) drawAgents(); }
-function loop(){ if(!running) return; applyStage(); tickTimer=setTimeout(loop, 3500); }
+function nextStage(){ applyLogic(); }
+function loop(){ if(!running) return; applyLogic(); tickTimer=setTimeout(loop, 1000); }
 function toggle(){ running=!running; if(running) loop(); else clearTimeout(tickTimer); }
-function resetSim(){ running=false; clearTimeout(tickTimer); idx=0; people.forEach(p=>{state[p.id].x=p.home[0];state[p.id].y=p.home[1];state[p.id].tx=p.home[0];state[p.id].ty=p.home[1];}); applyStage(); }
+function resetSim(){
+  running=false; clearTimeout(tickTimer); cycleStep=0; simMinutes=9*60;
+  people.forEach(p=>{state[p.id].x=p.home[0];state[p.id].y=p.home[1];state[p.id].tx=p.home[0];state[p.id].ty=p.home[1];state[p.id].mode='room';});
+  applyLogic();
+}
 
 window.toggle = toggle; window.nextStage = nextStage; window.resetSim = resetSim;
-drawAgents(); applyStage(); animate();
+drawAgents(); applyLogic(); animate();
 </script>
 </body>
 </html>
