@@ -51,6 +51,11 @@ const PATH = {
   roomDoor:[740,430], officeDoor:[740,280], kitchenDoor:[800,170], toiletDoor:[800,365]
 };
 
+function lanePoint(base, lane){
+  const offsets = [-18,-12,-6,0,6,12,18,24];
+  return [base[0] + offsets[lane % offsets.length], base[1]];
+}
+
 let simMin = 9*60; // 09:00
 let running=false, loopHandle;
 
@@ -72,31 +77,35 @@ const agents = agentsMeta.map((m,i)=>(
     x:rooms[i].x+70, y:ROOM_Y, vx:0, vy:0, speed:1.45 + Math.random()*0.35,
     target:null, path:[], zone:'room', seat:i,
     workLeft:0, kitchenLeft:0, toiletNeed:120, toiletLeft:0,
-    bubble:'', bubbleUntil:0, state:'idle', personality:Math.random() }
+    bubble:'', bubbleUntil:0, state:'idle', personality:Math.random(),
+    lastX:rooms[i].x+70, lastY:ROOM_Y, stuckFrames:0 }
 ));
 
 function bubble(a,t,d=2200){a.bubble=t;a.bubbleUntil=performance.now()+d}
 
 function setPath(a, points){ a.path = points.map(p=>[p[0],p[1]]); a.target = null; }
 function goOffice(a, seatIdx){
+  const lane = agents.indexOf(a);
   const seat = jitter(officeSeats[seatIdx%officeSeats.length],10,8);
-  setPath(a,[PATH.roomDoor, PATH.officeDoor, seat]);
+  setPath(a,[lanePoint(PATH.roomDoor,lane), lanePoint(PATH.officeDoor,lane), seat]);
   a.zone='office'; a.state='walk';
 }
 function goRoom(a){
   const i = agents.indexOf(a);
   const home = [rooms[i].x+70 + (Math.random()*10-5), ROOM_Y + (Math.random()*6-3)];
-  setPath(a,[PATH.officeDoor, PATH.roomDoor, home]);
+  setPath(a,[lanePoint(PATH.officeDoor,i), lanePoint(PATH.roomDoor,i), home]);
   a.zone='room'; a.state='walk';
 }
 function goKitchen(a){
+  const lane = agents.indexOf(a);
   const seat = jitter(rnd(kitchenSeats),10,8);
-  setPath(a,[PATH.officeDoor, PATH.kitchenDoor, seat]);
+  setPath(a,[lanePoint(PATH.officeDoor,lane), lanePoint(PATH.kitchenDoor,lane), seat]);
   a.zone='kitchen'; a.state='walk';
 }
 function goToilet(a){
+  const lane = agents.indexOf(a);
   const spot = jitter(rnd(toiletSpots),8,4);
-  setPath(a,[PATH.officeDoor, PATH.toiletDoor, spot]);
+  setPath(a,[lanePoint(PATH.officeDoor,lane), lanePoint(PATH.toiletDoor,lane), spot]);
   a.zone='toilet'; a.state='walk';
 }
 
@@ -160,10 +169,23 @@ function assignBehaviors(){
 
 function stepMove(a){
   if(!a.target && a.path.length) a.target = a.path.shift();
-  if(!a.target){a.state='idle'; return;}
+  if(!a.target){a.state='idle'; a.stuckFrames=0; return;}
   const dx=a.target[0]-a.x, dy=a.target[1]-a.y, d=Math.hypot(dx,dy);
-  if(d<=a.speed){a.x=a.target[0];a.y=a.target[1];a.target=null; return;}
+  if(d<=a.speed){a.x=a.target[0];a.y=a.target[1];a.target=null; a.stuckFrames=0; return;}
   a.x += dx/d*a.speed; a.y += dy/d*a.speed; a.state='walk';
+
+  const moved = Math.hypot(a.x-a.lastX, a.y-a.lastY);
+  if(moved < 0.12) a.stuckFrames += 1; else a.stuckFrames = 0;
+  a.lastX = a.x; a.lastY = a.y;
+
+  // unstick: small side-step + skip hard choke waypoint
+  if(a.stuckFrames > 24){
+    a.x += (Math.random()*10-5);
+    a.y += (Math.random()*8-4);
+    if(a.path.length) a.target = a.path.shift();
+    a.stuckFrames = 0;
+    bubble(a,'обхожу пробку',900);
+  }
 }
 
 function avoidOverlap(){
@@ -171,7 +193,7 @@ function avoidOverlap(){
     for(let j=i+1;j<agents.length;j++){
       const a=agents[i], b=agents[j];
       const dx=b.x-a.x, dy=b.y-a.y, d=Math.hypot(dx,dy) || 0.001;
-      const min=22;
+      const min=18;
       if(d<min){
         const push=(min-d)/2;
         const nx=dx/d, ny=dy/d;
