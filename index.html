@@ -3,256 +3,184 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Agent Office Viz</title>
+  <title>Agent Office Viz — Playable</title>
   <style>
     :root {
-      --bg: #0b1020;
-      --panel: #141b32;
-      --line: #2b3a67;
-      --text: #e8edff;
-      --muted: #9fb0e8;
-      --accent: #5eead4;
-      --kitchen: #3b2a4c;
-      --room: #1f2a4a;
+      --bg:#0b1020; --panel:#121a33; --line:#2c3c6b; --text:#e9edff; --muted:#9aabde;
+      --office:#1a274a; --kitchen:#3a2549; --room:#1d294d;
     }
     * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      background: radial-gradient(circle at 20% 10%, #1a2452, var(--bg));
-      color: var(--text);
-      min-height: 100vh;
-      padding: 16px;
-    }
-    h1 { margin: 0 0 10px; font-size: 24px; }
-    .subtitle { color: var(--muted); margin-bottom: 12px; }
+    body { margin:0; font-family: Inter,system-ui,Arial; background: radial-gradient(circle at 20% 10%, #1d2a55, var(--bg)); color:var(--text); padding:12px; }
+    h1 { margin:0 0 8px; font-size:22px; }
+    .sub { color:var(--muted); margin-bottom:10px; }
+    .hud { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+    button { background:#334a84; border:1px solid #5875c4; color:#fff; border-radius:8px; padding:8px 12px; cursor:pointer; }
+    .status { color:var(--muted); font-size:13px; }
 
-    .layout {
-      display: grid;
-      grid-template-columns: repeat(12, minmax(40px, 1fr));
-      gap: 10px;
-      max-width: 1200px;
-      margin: 0 auto;
+    .map {
+      max-width: 1200px; margin:auto; border:1px solid var(--line); border-radius:14px; overflow:hidden;
+      background: color-mix(in srgb, var(--panel) 92%, black);
     }
+    svg { width:100%; height:auto; display:block; }
+    .zone { fill-opacity:.95; stroke:var(--line); stroke-width:2; }
+    .label { fill:#cfe0ff; font-size:13px; font-weight:600; }
+    .agent { transition: transform .15s linear; }
+    .agent text { fill:#fff; font-size:12px; pointer-events:none; }
 
-    .zone {
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      background: color-mix(in srgb, var(--panel) 90%, black);
-      padding: 10px;
-      min-height: 170px;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .zone h3 {
-      margin: 0 0 8px;
-      font-size: 14px;
-      color: var(--accent);
-      text-transform: uppercase;
-      letter-spacing: .08em;
-    }
-
-    .common-office { grid-column: span 8; min-height: 360px; }
-    .kitchen { grid-column: span 4; background: color-mix(in srgb, var(--kitchen) 70%, #0b1020); }
-    .rooms { grid-column: span 12; display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 10px; }
-
-    .room {
-      background: color-mix(in srgb, var(--room) 80%, #0b1020);
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 8px;
-      min-height: 150px;
-    }
-
-    .bed {
-      width: 68px;
-      height: 30px;
-      border-radius: 8px;
-      background: linear-gradient(135deg, #7dd3fc, #60a5fa);
-      box-shadow: inset 0 -8px 0 rgba(0,0,0,.12);
-      margin-top: 6px;
-    }
-
-    .agent {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      border: 1px solid #41558f;
-      border-radius: 999px;
-      padding: 4px 8px;
-      margin: 4px;
-      background: rgba(255,255,255,.04);
-      font-size: 12px;
-      transition: transform .2s ease, background .2s ease;
-    }
-
-    .agent.active {
-      background: rgba(94, 234, 212, .15);
-      transform: translateY(-1px);
-      border-color: #57d8c3;
-    }
-
-    .relationship {
-      font-size: 12px;
-      color: var(--muted);
-      margin: 3px 0;
-    }
-
-    .statusbar {
-      margin-top: 12px;
-      max-width: 1200px;
-      margin-inline: auto;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 10px;
-      background: rgba(20,27,50,.7);
-      color: var(--muted);
-    }
-
-    .controls { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
-    button {
-      background: #3a4f87;
-      color: #fff;
-      border: 1px solid #5770b8;
-      border-radius: 8px;
-      padding: 8px 12px;
-      cursor: pointer;
-    }
-    button:hover { filter: brightness(1.1); }
-
-    .log {
-      margin-top: 8px;
-      font-size: 12px;
-      color: #b9c7f5;
-      min-height: 18px;
-    }
-
-    @media (max-width: 960px) {
-      .common-office, .kitchen { grid-column: span 12; }
-      .rooms { grid-template-columns: repeat(2, minmax(160px, 1fr)); }
-    }
+    .relations { max-width:1200px; margin:10px auto 0; border:1px solid var(--line); border-radius:10px; padding:10px; color:var(--muted); font-size:13px; }
   </style>
 </head>
 <body>
-  <h1>🏢 Agent Office Viz</h1>
-  <div class="subtitle">2D сцена: комнаты агентов, общий офис и кухня с живыми встречами.</div>
+  <h1>🏢 Agent Office Viz (игровой режим)</h1>
+  <div class="sub">Агенты реально двигаются между комнатами, офисом и кухней по стадиям работы.</div>
 
-  <div class="layout">
-    <section class="zone common-office" id="office">
-      <h3>Общий офис</h3>
-      <div id="officeAgents"></div>
-      <div class="log" id="officeLog"></div>
-    </section>
-
-    <section class="zone kitchen" id="kitchen">
-      <h3>Кухня / обмен опытом</h3>
-      <div id="kitchenAgents"></div>
-      <div class="log" id="kitchenLog">Пока тихо. Кофе греется.</div>
-    </section>
-
-    <section class="rooms" id="rooms"></section>
+  <div class="hud" style="max-width:1200px;margin:auto;">
+    <button onclick="toggle()">⏯ Старт/Пауза</button>
+    <button onclick="nextStage(true)">⏭ Следующая стадия</button>
+    <button onclick="resetSim()">🔄 Сброс</button>
+    <div class="status" id="status"></div>
   </div>
 
-  <div class="statusbar">
-    <strong>Pipeline:</strong> Arthur → Invoker (CTO) → PM/Designer → Engineers → QA → Invoker review → Arthur report
-    <div class="controls">
-      <button onclick="toggleRun()">⏯ Старт/Пауза</button>
-      <button onclick="tick(true)">⏭ Следующее событие</button>
-      <button onclick="resetSim()">🔄 Сброс</button>
-    </div>
-    <div class="log" id="globalLog"></div>
+  <div class="map">
+    <svg id="scene" viewBox="0 0 1200 720" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="1200" height="720" fill="#0f1730" />
+
+      <rect class="zone" x="20" y="20" width="760" height="390" rx="18" fill="var(--office)" />
+      <text class="label" x="38" y="45">Общий офис</text>
+
+      <rect class="zone" x="800" y="20" width="380" height="390" rx="18" fill="var(--kitchen)" />
+      <text class="label" x="818" y="45">Кухня</text>
+
+      <rect class="zone" x="20" y="430" width="145" height="260" rx="14" fill="var(--room)" />
+      <text class="label" x="32" y="454">Arthur</text>
+      <rect x="40" y="650" width="80" height="22" rx="6" fill="#5fb7ff" />
+
+      <rect class="zone" x="175" y="430" width="145" height="260" rx="14" fill="var(--room)" />
+      <text class="label" x="187" y="454">Invoker</text>
+      <rect x="195" y="650" width="80" height="22" rx="6" fill="#5fb7ff" />
+
+      <rect class="zone" x="330" y="430" width="145" height="260" rx="14" fill="var(--room)" />
+      <text class="label" x="342" y="454">Chen</text>
+      <rect x="350" y="650" width="80" height="22" rx="6" fill="#5fb7ff" />
+
+      <rect class="zone" x="485" y="430" width="145" height="260" rx="14" fill="var(--room)" />
+      <text class="label" x="497" y="454">Designer</text>
+      <rect x="505" y="650" width="80" height="22" rx="6" fill="#5fb7ff" />
+
+      <rect class="zone" x="640" y="430" width="145" height="260" rx="14" fill="var(--room)" />
+      <text class="label" x="652" y="454">Tinker</text>
+      <rect x="660" y="650" width="80" height="22" rx="6" fill="#5fb7ff" />
+
+      <rect class="zone" x="795" y="430" width="145" height="260" rx="14" fill="var(--room)" />
+      <text class="label" x="807" y="454">Oracle</text>
+      <rect x="815" y="650" width="80" height="22" rx="6" fill="#5fb7ff" />
+
+      <rect class="zone" x="950" y="430" width="110" height="260" rx="14" fill="var(--room)" />
+      <text class="label" x="958" y="454">Io</text>
+      <rect x="962" y="650" width="80" height="22" rx="6" fill="#5fb7ff" />
+
+      <rect class="zone" x="1065" y="430" width="115" height="260" rx="14" fill="var(--room)" />
+      <text class="label" x="1072" y="454">QA</text>
+      <rect x="1080" y="650" width="80" height="22" rx="6" fill="#5fb7ff" />
+
+      <g id="agents"></g>
+    </svg>
   </div>
 
-  <script>
-    const agents = [
-      { id: 'arthur', name: 'Arthur ♊', icon: '🧭', role: 'Orchestrator', relation: 'Дружит с Invoker', room: 'Комната Arthur' },
-      { id: 'bruce', name: 'Invoker', icon: '🎩', role: 'CTO', relation: 'Плотно работает с PM и Dev', room: 'Комната Invoker' },
-      { id: 'chen', name: 'Chen', icon: '📋', role: 'PM', relation: 'Хороший тандем с дизайнером', room: 'Комната Chen' },
-      { id: 'designer', name: 'Juggernaut', icon: '🎨', role: 'Designer', relation: 'Коллега Dev, дружит с PM', room: 'Комната Designer' },
-      { id: 'tinker', name: 'Tinker', icon: '💻', role: 'Engineer', relation: 'Коллега QA', room: 'Комната Tinker' },
-      { id: 'oracle', name: 'Oracle', icon: '🔮', role: 'Data', relation: 'Коллега Io', room: 'Комната Oracle' },
-      { id: 'io', name: 'Io', icon: '⚙️', role: 'MLOps', relation: 'Коллега Oracle', room: 'Комната Io' },
-      { id: 'qa', name: 'Bounty Hunter', icon: '🛡️', role: 'QA', relation: 'Жёсткий, но справедливый', room: 'Комната QA' }
-    ];
+  <div class="relations" id="relations"></div>
 
-    const stages = [
-      { name: 'Arthur формулирует задачу', office: ['arthur'], kitchen: [] },
-      { name: 'Invoker декомпозирует и раздаёт', office: ['bruce', 'chen', 'designer'], kitchen: [] },
-      { name: 'Инженеры строят фичи', office: ['tinker', 'oracle', 'io'], kitchen: ['chen'] },
-      { name: 'QA проверяет и ловит баги', office: ['qa', 'tinker'], kitchen: [] },
-      { name: 'Invoker ревьюит и апрувит', office: ['bruce', 'qa'], kitchen: ['designer'] },
-      { name: 'Arthur проверяет URL и репортит', office: ['arthur', 'bruce'], kitchen: ['chen', 'tinker'] }
-    ];
+<script>
+const people = [
+  {id:'arthur', name:'Arthur', emoji:'🧭', color:'#63b3ff', home:[80,560]},
+  {id:'bruce', name:'Invoker', emoji:'🎩', color:'#b38bff', home:[235,560]},
+  {id:'chen', name:'Chen', emoji:'📋', color:'#ff9ae6', home:[390,560]},
+  {id:'designer', name:'Designer', emoji:'🎨', color:'#ff8a6b', home:[545,560]},
+  {id:'tinker', name:'Tinker', emoji:'💻', color:'#67dbff', home:[700,560]},
+  {id:'oracle', name:'Oracle', emoji:'🔮', color:'#ff74b9', home:[855,560]},
+  {id:'io', name:'Io', emoji:'⚙️', color:'#ffe680', home:[1000,560]},
+  {id:'qa', name:'QA', emoji:'🛡️', color:'#7cff9e', home:[1120,560]}
+];
 
-    let stage = 0;
-    let running = false;
-    let timer = null;
+const zones = {
+  office:[[90,90],[260,120],[430,90],[600,120],[740,150],[510,260],[300,250],[160,300]],
+  kitchen:[[845,120],[980,120],[1120,120],[900,230],[1060,250],[950,330]],
+};
 
-    function agentChip(a, active = false) {
-      return `<div class="agent ${active ? 'active' : ''}">${a.icon} ${a.name}</div>`;
+const stages = [
+  {title:'Arthur получает задачу и формирует бриф', office:['arthur'], kitchen:[]},
+  {title:'Invoker + PM + Designer декомпозируют', office:['bruce','chen','designer'], kitchen:[]},
+  {title:'Разработка: инженеры в офисе, PM на кухне синкается', office:['tinker','oracle','io'], kitchen:['chen']},
+  {title:'QA гоняет тесты, Tinker чинит', office:['qa','tinker'], kitchen:[]},
+  {title:'Invoker ревьюит, Designer + QA sync на кухне', office:['bruce'], kitchen:['designer','qa']},
+  {title:'Arthur проверяет URL и репортит', office:['arthur','bruce'], kitchen:['chen','tinker']}
+];
+
+const relationText = '🤝 Связи: Arthur↔Invoker (дружба), Chen↔Designer (сильная рабочая связка), Tinker↔QA (боевой дуэт), Oracle↔Io (инфра-партнёры).';
+
+const state = Object.fromEntries(people.map(p => [p.id, {x:p.home[0], y:p.home[1], tx:p.home[0], ty:p.home[1]}]));
+let idx = 0, running = false, tickTimer;
+
+const g = document.getElementById('agents');
+function drawAgents(){
+  g.innerHTML = people.map(p => `
+    <g class="agent" id="a-${p.id}">
+      <circle r="15" fill="${p.color}" cx="${state[p.id].x}" cy="${state[p.id].y}"/>
+      <text x="${state[p.id].x-11}" y="${state[p.id].y+5}">${p.emoji}</text>
+      <text x="${state[p.id].x-20}" y="${state[p.id].y+28}" font-size="10">${p.name}</text>
+    </g>`).join('');
+}
+
+function rand(arr){ return arr[Math.floor(Math.random()*arr.length)] }
+
+function applyStage(){
+  const s = stages[idx];
+  const inOffice = new Set(s.office);
+  const inKitchen = new Set(s.kitchen);
+
+  people.forEach(p => {
+    if (inOffice.has(p.id)) {
+      const [x,y] = rand(zones.office);
+      state[p.id].tx = x + Math.random()*18;
+      state[p.id].ty = y + Math.random()*18;
+    } else if (inKitchen.has(p.id)) {
+      const [x,y] = rand(zones.kitchen);
+      state[p.id].tx = x + Math.random()*16;
+      state[p.id].ty = y + Math.random()*16;
+    } else {
+      state[p.id].tx = p.home[0] + (Math.random()*20-10);
+      state[p.id].ty = p.home[1] + (Math.random()*12-6);
     }
+  });
 
-    function drawRooms() {
-      const rooms = document.getElementById('rooms');
-      rooms.innerHTML = agents.map(a => `
-        <article class="room" id="room-${a.id}">
-          <h3>${a.room}</h3>
-          ${agentChip(a)}
-          <div class="relationship">${a.role}</div>
-          <div class="relationship">🤝 ${a.relation}</div>
-          <div class="bed" title="Кровать"></div>
-        </article>
-      `).join('');
-    }
+  document.getElementById('status').textContent = `Стадия ${idx+1}/${stages.length}: ${s.title}`;
+  document.getElementById('relations').textContent = relationText;
+  idx = (idx + 1) % stages.length;
+}
 
-    function tick(manual = false) {
-      const s = stages[stage];
-      const officeSet = new Set(s.office);
-      const kitchenSet = new Set(s.kitchen);
+function animate(){
+  people.forEach(p => {
+    const s = state[p.id];
+    s.x += (s.tx - s.x) * 0.08;
+    s.y += (s.ty - s.y) * 0.08;
+    const node = document.getElementById(`a-${p.id}`);
+    if (!node) return;
+    const c = node.querySelector('circle');
+    const t1 = node.querySelectorAll('text')[0];
+    const t2 = node.querySelectorAll('text')[1];
+    c.setAttribute('cx', s.x); c.setAttribute('cy', s.y);
+    t1.setAttribute('x', s.x-11); t1.setAttribute('y', s.y+5);
+    t2.setAttribute('x', s.x-20); t2.setAttribute('y', s.y+28);
+  });
+  requestAnimationFrame(animate);
+}
 
-      document.getElementById('officeAgents').innerHTML = agents
-        .filter(a => officeSet.has(a.id))
-        .map(a => agentChip(a, true)).join('') || '<span class="relationship">Офис пуст.</span>';
+function nextStage(manual=false){ applyStage(); if (manual && !running) drawAgents(); }
+function loop(){ if(!running) return; applyStage(); tickTimer=setTimeout(loop, 3500); }
+function toggle(){ running=!running; if(running) loop(); else clearTimeout(tickTimer); }
+function resetSim(){ running=false; clearTimeout(tickTimer); idx=0; people.forEach(p=>{state[p.id].x=p.home[0];state[p.id].y=p.home[1];state[p.id].tx=p.home[0];state[p.id].ty=p.home[1];}); applyStage(); }
 
-      document.getElementById('kitchenAgents').innerHTML = agents
-        .filter(a => kitchenSet.has(a.id))
-        .map(a => agentChip(a, true)).join('') || '<span class="relationship">Никого, только кружки.</span>';
-
-      document.getElementById('officeLog').textContent = `Сцена: ${s.name}`;
-      document.getElementById('kitchenLog').textContent = kitchenSet.size
-        ? 'На кухне делятся контекстом и опытом.'
-        : 'Кухня ждёт следующий митап.';
-
-      document.getElementById('globalLog').textContent = manual
-        ? `Ручной шаг: ${s.name}`
-        : `Авто: ${s.name}`;
-
-      stage = (stage + 1) % stages.length;
-    }
-
-    function loop() {
-      if (!running) return;
-      tick();
-      timer = setTimeout(loop, 2800);
-    }
-
-    function toggleRun() {
-      running = !running;
-      if (running) loop();
-      else clearTimeout(timer);
-    }
-
-    function resetSim() {
-      running = false;
-      clearTimeout(timer);
-      stage = 0;
-      tick(true);
-      document.getElementById('globalLog').textContent = 'Симуляция сброшена.';
-    }
-
-    drawRooms();
-    tick(true);
-  </script>
+window.toggle = toggle; window.nextStage = nextStage; window.resetSim = resetSim;
+drawAgents(); applyStage(); animate();
+</script>
 </body>
 </html>
